@@ -248,12 +248,13 @@ fn parse_decimal(raw: &str) -> Result<ParsedValue> {
             let dec = BigDecimal::from_str(raw)
                 .with_context(|| format!("unable to parse decimal input: {raw}"))?;
             let (int, exp) = dec.into_bigint_and_exponent();
-            let scale = if exp >= 0 {
-                BigInt::one()
+            let rat = if exp >= 0 {
+                let scale = BigInt::from(10u32).pow(exp as u32);
+                BigRational::new(int, scale)
             } else {
-                BigInt::from(10u32).pow((-exp) as u32)
+                let scale = BigInt::from(10u32).pow((-exp) as u32);
+                BigRational::new(int * scale, BigInt::one())
             };
-            let rat = BigRational::new(int, scale);
             Ok(ParsedValue::Finite(rat))
         }
     }

@@ -44,3 +44,29 @@ fn hex_input_allows_0x_prefix() {
 	let bits = hex_to_bits("0X3FC00000", total_bits(&spec).unwrap()).expect("hex to bits");
 	assert_eq!(bits, "00111111110000000000000000000000");
 }
+
+#[test]
+fn decimal_zero_point_one_matches_reference_bits() {
+	let spec = FloatSpec {
+		name: "FP32",
+		exponent_bits: 8,
+		significand_bits: 23,
+	};
+	let parsed = parse_decimal("0.1").expect("parse decimal");
+	let soft = parsed_to_softfloat(&parsed, &spec, RoundingMode::HalfEven);
+	let bits = softfloat_to_bits(&soft, &spec);
+	assert_eq!(bits, "00111101110011001100110011001101");
+}
+
+#[test]
+fn decimal_negative_two_point_five_matches_reference_bits() {
+	let spec = FloatSpec {
+		name: "FP32",
+		exponent_bits: 8,
+		significand_bits: 23,
+	};
+	let parsed = parse_decimal("-2.5").expect("parse decimal");
+	let soft = parsed_to_softfloat(&parsed, &spec, RoundingMode::HalfEven);
+	let bits = softfloat_to_bits(&soft, &spec);
+	assert_eq!(bits, "11000000001000000000000000000000");
+}
