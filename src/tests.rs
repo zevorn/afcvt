@@ -70,3 +70,45 @@ fn decimal_negative_two_point_five_matches_reference_bits() {
 	let bits = softfloat_to_bits(&soft, &spec);
 	assert_eq!(bits, "11000000001000000000000000000000");
 }
+
+#[test]
+fn fp16_one_point_five_matches_reference_bits() {
+	let spec = FloatSpec {
+		name: "FP16",
+		exponent_bits: 5,
+		significand_bits: 10,
+	};
+	let parsed = parse_decimal("1.5").expect("parse decimal");
+	let soft = parsed_to_softfloat(&parsed, &spec, RoundingMode::HalfEven);
+	let bits = softfloat_to_bits(&soft, &spec);
+	assert_eq!(bits, "0011111000000000");
+}
+
+#[test]
+fn bfloat16_pi_matches_reference_bits() {
+	let spec = FloatSpec {
+		name: "bfloat16",
+		exponent_bits: 8,
+		significand_bits: 7,
+	};
+	let parsed = parse_decimal("3.14159265").expect("parse decimal");
+	let soft = parsed_to_softfloat(&parsed, &spec, RoundingMode::HalfEven);
+	let bits = softfloat_to_bits(&soft, &spec);
+	assert_eq!(bits, "0100000001001001");
+}
+
+#[test]
+fn fp64_negative_value_matches_reference_bits() {
+	let spec = FloatSpec {
+		name: "FP64",
+		exponent_bits: 11,
+		significand_bits: 52,
+	};
+	let parsed = parse_decimal("-123.456").expect("parse decimal");
+	let soft = parsed_to_softfloat(&parsed, &spec, RoundingMode::HalfEven);
+	let bits = softfloat_to_bits(&soft, &spec);
+	assert_eq!(
+		bits,
+		"1100000001011110110111010010111100011010100111111011111001110111"
+	);
+}
