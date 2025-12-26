@@ -145,10 +145,16 @@ struct ReferenceDump {
 	samples: Vec<ReferenceSample>,
 }
 
-fn run_reference(format: &str, limit: Option<usize>) -> ReferenceDump {
+fn run_reference(format: &str, exp: Option<usize>, mant: Option<usize>, limit: Option<usize>) -> ReferenceDump {
 	let mut cmd = Command::new("node");
 	cmd.arg("scripts/fetch_flop_reference.js");
 	cmd.arg(format!("--format={format}"));
+	if let Some(exp) = exp {
+		cmd.arg(format!("--exp={exp}"));
+	}
+	if let Some(mant) = mant {
+		cmd.arg(format!("--mant={mant}"));
+	}
 	if let Some(limit) = limit {
 		cmd.arg(format!("--limit={limit}"));
 	}
@@ -169,7 +175,7 @@ fn spec_from_dump(dump: &ReferenceDump) -> FloatSpec {
 		"TF32" => "TensorFloat-32",
 		"FP32" => "FP32",
 		"FP64" => "FP64",
-		other => panic!("unknown format {other}"),
+		_ => "Custom",
 	};
 	FloatSpec {
 		name,
@@ -229,14 +235,35 @@ fn compare_against_reference(dump: ReferenceDump) {
 
 #[test]
 fn site_reference_fp16_full_space() {
-	let dump = run_reference("FP16", None);
+	let dump = run_reference("FP16", None, None, None);
 	assert_eq!(dump.count, 65536);
 	compare_against_reference(dump);
 }
 
 #[test]
 fn site_reference_bfloat16_full_space() {
-	let dump = run_reference("BF16", None);
+	let dump = run_reference("BF16", None, None, None);
 	assert_eq!(dump.count, 65536);
+	compare_against_reference(dump);
+}
+
+#[test]
+fn site_reference_float8_e5m2_full_space() {
+	let dump = run_reference("float8e5m2", Some(5), Some(2), None);
+	assert_eq!(dump.count, 256);
+	compare_against_reference(dump);
+}
+
+#[test]
+fn site_reference_float8_e4m3_full_space() {
+	let dump = run_reference("float8e4m3", Some(4), Some(3), None);
+	assert_eq!(dump.count, 256);
+	compare_against_reference(dump);
+}
+
+#[test]
+fn site_reference_float4_e2m1_full_space() {
+	let dump = run_reference("float4e2m1", Some(2), Some(1), None);
+	assert_eq!(dump.count, 16);
 	compare_against_reference(dump);
 }

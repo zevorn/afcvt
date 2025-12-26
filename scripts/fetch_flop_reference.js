@@ -14,27 +14,51 @@ const BIGNUM_URLS = [
 
 const parseArgs = () => {
 	const args = process.argv.slice(2);
-	const result = { format: "FP16", limit: null };
+	const result = { format: "FP16", limit: null, exp: null, mant: null };
 	for (const arg of args) {
 		if (arg.startsWith("--format=")) {
 			result.format = arg.replace("--format=", "");
 		} else if (arg.startsWith("--limit=")) {
 			result.limit = Number(arg.replace("--limit=", ""));
+		} else if (arg.startsWith("--exp=")) {
+			result.exp = Number(arg.replace("--exp=", ""));
+		} else if (arg.startsWith("--mant=")) {
+			result.mant = Number(arg.replace("--mant=", ""));
 		}
 	}
 	return result;
 };
 
-const fetchJson = async (url) => {
-	const res = await fetch(url);
-	if (!res.ok) throw new Error(`failed to fetch ${url}: ${res.status}`);
-	return res.json();
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const fetchJson = async (url, attempts = 3) => {
+	let lastErr = null;
+	for (let i = 0; i < attempts; i++) {
+		try {
+			const res = await fetch(url);
+			if (!res.ok) throw new Error(`failed to fetch ${url}: ${res.status}`);
+			return await res.json();
+		} catch (err) {
+			lastErr = err;
+			await sleep(200 * (i + 1));
+		}
+	}
+	throw lastErr;
 };
 
-const fetchText = async (url) => {
-	const res = await fetch(url);
-	if (!res.ok) throw new Error(`failed to fetch ${url}: ${res.status}`);
-	return res.text();
+const fetchText = async (url, attempts = 3) => {
+	let lastErr = null;
+	for (let i = 0; i < attempts; i++) {
+		try {
+			const res = await fetch(url);
+			if (!res.ok) throw new Error(`failed to fetch ${url}: ${res.status}`);
+			return await res.text();
+		} catch (err) {
+			lastErr = err;
+			await sleep(200 * (i + 1));
+		}
+	}
+	throw lastErr;
 };
 
 const fetchTextWithFallback = async (urls) => {
@@ -100,7 +124,7 @@ const extractSources = (mapJson, name) => {
 };
 
 const buildReference = async () => {
-	const { format, limit } = parseArgs();
+	const { format, limit, exp, mant } = parseArgs();
 	const manifest = await fetchJson(ASSET_MANIFEST_URL);
 	const mapPath = manifest.files["main.js.map"];
 	if (!mapPath) throw new Error("missing main.js.map");
@@ -134,8 +158,14 @@ const buildReference = async () => {
 		FP32: { exponentWidth: constants.FP32.exponentWidth, significandWidth: constants.FP32.significandWidth },
 		FP64: { exponentWidth: constants.FP64.exponentWidth, significandWidth: constants.FP64.significandWidth },
 	};
-	const target = formats[format];
-	if (!target) throw new Error(`unsupported format ${format}`);
+	let target = formats[format];
+	if (!target) {
+		if (exp && mant) {
+			target = { exponentWidth: exp, significandWidth: mant };
+		} else {
+			throw new Error(`unsupported format ${format}; provide --exp and --mant`);
+		}
+	}
 
 	const totalBits = 1 + target.exponentWidth + target.significandWidth;
 	const hexDigits = Math.ceil(totalBits / 4);
