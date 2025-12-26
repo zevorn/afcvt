@@ -1,4 +1,7 @@
 use super::*;
+use serde::Deserialize;
+use std::process::Command;
+use std::str::FromStr;
 
 #[test]
 fn log2_floor_handles_gt_one() {
@@ -111,4 +114,129 @@ fn fp64_negative_value_matches_reference_bits() {
 		bits,
 		"1100000001011110110111010010111100011010100111111011111001110111"
 	);
+}
+
+#[derive(Deserialize)]
+struct ReferenceFraction {
+	num: String,
+	den: String,
+}
+
+#[derive(Deserialize)]
+struct ReferenceSample {
+	hex: String,
+	bits: String,
+	#[serde(rename = "type")]
+	kind: u32,
+	sign: bool,
+	exponent: i32,
+	significand: String,
+	fraction: Option<ReferenceFraction>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReferenceDump {
+	format: String,
+	exponent_width: usize,
+	significand_width: usize,
+	total_bits: usize,
+	count: usize,
+	samples: Vec<ReferenceSample>,
+}
+
+fn run_reference(format: &str, limit: Option<usize>) -> ReferenceDump {
+	let mut cmd = Command::new("node");
+	cmd.arg("scripts/fetch_flop_reference.js");
+	cmd.arg(format!("--format={format}"));
+	if let Some(limit) = limit {
+		cmd.arg(format!("--limit={limit}"));
+	}
+	let output = cmd.output().expect("spawn node");
+	if !output.status.success() {
+		panic!(
+			"reference script failed: {}",
+			String::from_utf8_lossy(&output.stderr)
+		);
+	}
+	serde_json::from_slice(&output.stdout).expect("parse reference json")
+}
+
+fn spec_from_dump(dump: &ReferenceDump) -> FloatSpec {
+	let name = match dump.format.as_str() {
+		"FP16" => "FP16",
+		"BF16" => "bfloat16",
+		"TF32" => "TensorFloat-32",
+		"FP32" => "FP32",
+		"FP64" => "FP64",
+		other => panic!("unknown format {other}"),
+	};
+	FloatSpec {
+		name,
+		exponent_bits: dump.exponent_width,
+		significand_bits: dump.significand_width,
+	}
+}
+
+fn compare_against_reference(dump: ReferenceDump) {
+	let spec = spec_from_dump(&dump);
+	let total = dump.total_bits;
+	for sample in dump.samples {
+		let soft = bits_to_softfloat(&sample.bits, &spec).expect("parse bits");
+		assert_eq!(soft.sign, sample.sign, "sign mismatch for hex {}", sample.hex);
+
+		let expected_class = match sample.kind {
+			0 => Class::Normal,
+			1 => {
+				if sample.significand == "0" {
+					Class::Zero
+				} else {
+					Class::Subnormal
+				}
+			}
+			2 => Class::PosInfinity,
+			3 => Class::NegInfinity,
+			_ => Class::Nan,
+		};
+
+		assert_eq!(
+			soft.class, expected_class,
+			"class mismatch for hex {}, bits {}",
+			sample.hex, sample.bits
+		);
+
+		if matches!(expected_class, Class::Normal | Class::Subnormal | Class::Zero) {
+			assert_eq!(
+				soft.exponent, sample.exponent,
+				"exponent mismatch for hex {}",
+				sample.hex
+			);
+		}
+
+		if let Some(fr) = sample.fraction {
+			let num = BigInt::from_str(&fr.num).expect("num");
+			let den = BigInt::from_str(&fr.den).expect("den");
+			let reference = BigRational::new(num, den);
+			let ours = softfloat_to_rational(&soft, &spec).expect("rational value");
+			assert_eq!(
+				ours, reference,
+				"value mismatch for bits {} ({} bits expected {})",
+				sample.bits, total, sample.hex
+			);
+		}
+	}
+}
+
+#[test]
+fn site_reference_fp16_full_space() {
+	let dump = run_reference("FP16", None);
+	assert_eq!(dump.count, 65536);
+	compare_against_reference(dump);
+}
+
+#[test]
+fn site_reference_bfloat16_full_space() {
+	let dump = run_reference("BF16", None);
+	assert_eq!(dump.count, 65536);
+	compare_against_reference(dump);
 }
