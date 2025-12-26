@@ -589,17 +589,22 @@ fn hex_to_bits(hex: &str, total_bits: usize) -> Result<String> {
 }
 
 fn bits_to_softfloat(bits: &str, spec: &FloatSpec) -> Result<SoftFloat> {
+    let cleaned = bits
+        .trim()
+        .strip_prefix("0b")
+        .or_else(|| bits.trim().strip_prefix("0B"))
+        .unwrap_or_else(|| bits.trim());
     let total = total_bits(spec)?;
-    if bits.len() != total {
-        bail!("expected {} bits, got {}", total, bits.len());
+    if cleaned.len() != total {
+        bail!("expected {} bits, got {}", total, cleaned.len());
     }
-    if !bits.chars().all(|c| c == '0' || c == '1') {
+    if !cleaned.chars().all(|c| c == '0' || c == '1') {
         bail!("bits must contain only 0 or 1");
     }
 
-    let sign = bits.as_bytes()[0] == b'1';
-    let exp_bits = &bits[1..1 + spec.exponent_bits];
-    let frac_bits = &bits[1 + spec.exponent_bits..];
+    let sign = cleaned.as_bytes()[0] == b'1';
+    let exp_bits = &cleaned[1..1 + spec.exponent_bits];
+    let frac_bits = &cleaned[1 + spec.exponent_bits..];
 
     let exp_val = usize::from_str_radix(exp_bits, 2)?;
     let mantissa = BigUint::parse_bytes(frac_bits.as_bytes(), 2)
@@ -767,6 +772,30 @@ mod tests {
         assert_eq!(soft.class, Class::Normal);
         assert_eq!(soft.exponent, 0);
         let bits = softfloat_to_bits(&soft, &spec);
+        assert_eq!(bits, "00111111110000000000000000000000");
+    }
+
+    #[test]
+    fn bits_input_allows_0b_prefix() {
+        let spec = FloatSpec {
+            name: "FP32",
+            exponent_bits: 8,
+            significand_bits: 23,
+        };
+        let parsed = bits_to_softfloat("0b00111111110000000000000000000000", &spec)
+            .expect("parse bits");
+        assert_eq!(parsed.class, Class::Normal);
+        assert_eq!(parsed.exponent, 0);
+    }
+
+    #[test]
+    fn hex_input_allows_0x_prefix() {
+        let spec = FloatSpec {
+            name: "FP32",
+            exponent_bits: 8,
+            significand_bits: 23,
+        };
+        let bits = hex_to_bits("0X3FC00000", total_bits(&spec).unwrap()).expect("hex to bits");
         assert_eq!(bits, "00111111110000000000000000000000");
     }
 }
