@@ -352,9 +352,9 @@ fn log2_floor(r: &BigRational) -> i32 {
 fn compare_pow2(r: &BigRational, exp: i32) -> Ordering {
     let pow = BigInt::one() << exp.abs();
     if exp >= 0 {
-        (r.numer() * pow).cmp(r.denom())
-    } else {
         r.numer().cmp(&(r.denom() * pow))
+    } else {
+        (r.numer() * pow).cmp(r.denom())
     }
 }
 
@@ -743,4 +743,30 @@ fn to_scientific(num: &str) -> String {
     );
     let sign_prefix = if negative { "-" } else { "" };
     format!("{sign_prefix}{mantissa}{exp_str}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn log2_floor_handles_gt_one() {
+        let val = BigRational::new(BigInt::from(3), BigInt::from(2));
+        assert_eq!(log2_floor(&val), 0);
+    }
+
+    #[test]
+    fn fp32_roundtrip_for_one_point_five() {
+        let spec = FloatSpec {
+            name: "FP32",
+            exponent_bits: 8,
+            significand_bits: 23,
+        };
+        let parsed = ParsedValue::Finite(BigRational::new(BigInt::from(3), BigInt::from(2)));
+        let soft = parsed_to_softfloat(&parsed, &spec, RoundingMode::HalfEven);
+        assert_eq!(soft.class, Class::Normal);
+        assert_eq!(soft.exponent, 0);
+        let bits = softfloat_to_bits(&soft, &spec);
+        assert_eq!(bits, "00111111110000000000000000000000");
+    }
 }
